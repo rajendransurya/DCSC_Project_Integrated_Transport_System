@@ -1,1 +1,5 @@
 .idea/
+dump.rdb
+.DS_Store
+fare_deduction/__pycache__/
+__pycache__

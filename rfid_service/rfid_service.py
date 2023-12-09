@@ -21,11 +21,18 @@ def response200():
     return Response(response=response_pickled, status=200, mimetype="application/json")
 
 
-def response404():
-    response = {'"success":false'}
+def response404(message):
+    response = {"success":False,
+                "message":f'{message}'
+                }
     response_pickled = jsonpickle.encode(response)
     return Response(response=response_pickled, status=404, mimetype="application/json")
 
+def response400(message):
+    response = {"success":False,
+                "message":message}
+    response_pickled = jsonpickle.encode(response)
+    return Response(response=response_pickled, status=400, mimetype="application/json")
 
 # get card info based on rfid number
 
@@ -35,6 +42,8 @@ def card_exists():
     card_id = ''
     if request_data and 'card_id' in request_data :
         card_id = request_data['card_id']
+    else:
+        return response400("Insufficient or incorrect data")
     global dbconn, cur
     if dbconn is None:
         dbconn, cur = db.get_db()
@@ -43,21 +52,23 @@ def card_exists():
         cur.execute(get_script)
         record = cur.fetchall()
         if cur.rowcount == 0:
-            return response404()
+            return response404("Card details not found")
         response={}
         card_id = record[0][0]
         user_id = record[0][1]
         balance = str(record[0][2])
         isActive =record[0][3]
-        response = {
-                "card_id":card_id,
-                "user_id":user_id,
-                "balance":balance,
-                "isActive":isActive,
-        }
-
-        response_pickled = jsonpickle.encode(response)
-        return Response(response=response_pickled,status=200,mimetype ="application/json")
+        if isActive:
+            response = {
+                    "card_id":card_id,
+                    "user_id":user_id,
+                    "balance":balance,
+                    "isActive":isActive,
+            }
+            response_pickled = jsonpickle.encode(response)
+            return Response(response=response_pickled, status=200, mimetype="application/json")
+        else:
+            return response404("Card inactive")
     else:
         return response500()
 
@@ -74,21 +85,21 @@ def card_exists():
 @app.route('/api/card/rfid/deduction', methods=['POST'])
 def deduction():
     request_data = request.get_json()
-    card_id=request_data["card_id"]
-    amount=request_data["amount"]
-    global dbconn, cur
-    if dbconn is None:
-        dbconn, cur = db.get_db()
-    update_script = f"UPDATE rfid.card_detail SET balance = balance-{amount},updated_at=CURRENT_TIMESTAMP where card_id='{card_id}'"
-    cur.execute(update_script)
-    if dbconn is not None:
-        dbconn.commit()
-
-    # if cur is not None:
-    #     cur.close()
-    # if dbconn is not None:
-    #     dbconn.close()
-    return response200()
+    if request_data and 'card_id' in request_data and 'amount' in request_data:
+        card_id=request_data["card_id"]
+        amount=request_data["amount"]
+        global dbconn, cur
+        if dbconn is None:
+            dbconn, cur = db.get_db()
+        update_script = f"UPDATE rfid.card_detail SET balance = balance-{amount},updated_at=CURRENT_TIMESTAMP where card_id='{card_id}'"
+        cur.execute(update_script)
+        if dbconn is not None:
+            dbconn.commit()
+            return response200()
+        else:
+            return response500()
+    else:
+        return response400("Incorrect or insufficient data in request")
 @app.teardown_appcontext
 def teardown_db(exception=None):
     global cur,dbconn
