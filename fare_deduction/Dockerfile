@@ -10,10 +10,9 @@ COPY /fare_deduction .
 # Copy the db package directory into the container
 COPY db/ ./db
 
-COPY ../.env /app
 
 # Install dependencies for rfid_service
-RUN pip install json uuid jsonpickle flask redis requests psycopg2-binary python-dotenv logging
+RUN pip install uuid jsonpickle flask redis requests psycopg2-binary python-dotenv psycopg-pool psycopg_pool psycopg-binary psycopg
 
 # Expose the port where the rfid_service Flask app runs (Port 6000)
 EXPOSE 6100

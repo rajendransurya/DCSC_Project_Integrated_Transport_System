@@ -3,8 +3,7 @@ import os
 import redis
 from dotenv import load_dotenv
 # get environment variables
-dotenv_path = Path('../.env')
-load_dotenv(dotenv_path)
+load_dotenv()
 
 redisHost = os.getenv("REDIS_HOST")
 redisPort = os.getenv("REDIS_PORT")

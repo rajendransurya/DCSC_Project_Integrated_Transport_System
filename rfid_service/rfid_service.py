@@ -4,6 +4,7 @@ import jsonpickle
 import logging
 
 sys.path.append('..')
+print(sys.path)
 from db import db_utils
 
 app = Flask(__name__)
@@ -127,9 +128,6 @@ def get_user():
 @app.teardown_appcontext
 def teardown_db(exception=None):
     logger.info("App request tear down")
-
-
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6300, debug=True)

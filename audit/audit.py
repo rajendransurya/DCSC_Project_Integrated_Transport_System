@@ -16,7 +16,7 @@ redisPort = os.getenv("REDIS_PORT")
 
 aws_access_key_id= os.getenv('AWS_ACCESS_KEY_ID')
 aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-region = 'AWS_REGION'
+region = os.getenv('AWS_REGION')
 
 JOURNEY_KEY = 'journeys'
 TRANSACTION_KEY='transactions'

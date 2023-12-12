@@ -1,0 +1,29 @@
+apiVersion: apps/v1 #  for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: its-gateway
+spec:
+  selector:
+    matchLabels:
+      app: its-gateway
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: its-gateway
+    spec:
+      containers:
+      - name: its-gateway
+        image: rajendransurya/its-gateway:latest   #for local
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9000
+          protocol: TCP
+        env:
+        - name: rfid_card_endpoint
+          value: "http://rfid-card:6300"
+        - name: fare_deduction_endpoint
+          value: "http://fare_deduct:6100"
+        - name: payment_end_point
+          value: "http://payment:6200"
+          #payment and other service to follow

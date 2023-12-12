@@ -8,17 +8,17 @@ from flask import Flask, request, Response
 from decimal import Decimal
 from datetime import datetime, timedelta
 import logging
+
 sys.path.append('..')
 from db import db_utils
 
 from dotenv import load_dotenv
 
 # get environment variables
-dotenv_path = Path('../.env')
-load_dotenv(dotenv_path)
+load_dotenv()
 
-logger = logging.getLogger('werkzeug')
-logger.setLevel(logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 redisHost = os.getenv("REDIS_HOST")
 redisPort = os.getenv("REDIS_PORT")
@@ -29,8 +29,6 @@ LOG_KEY = 'logging'
 
 redis_cache = redis.StrictRedis(host=redisHost, port=redisPort, db=0, decode_responses=True)
 message_queue = redis.StrictRedis(host=redisHost, port=redisPort, db=1, decode_responses=True)
-
-
 
 db_pool = db_utils.DBUtil()  # Initialize the DB connection pool here
 
@@ -57,88 +55,161 @@ app = Flask(__name__)
 # for tag off
 # create new record in journey status to tag off and add status too
 
-def buildResponse(status_code, message):
-    response = {"success": status_code == 200,
-                "message": message}
-    response_pickled = jsonpickle.encode(response)
-    return Response(response=response_pickled, status=status_code, mimetype="application/json")
-
 
 @app.route('/api/card/fare', methods=['GET'])
 def fare_deduction():
     request_data = request.args
     card_id = request_data.get('card_id')
-    print(f"Card id {card_id}")
     zone_no = request_data.get("zone_no", type=int)
-    print(f"Zone no {zone_no}")
 
     if not card_id and not zone_no:
         logger.debug("Bad input for fare_calculation")
         return buildResponse(400, "Bad input for fare_calculation")
 
     logger.debug("Trying to get fare details from Cache")
-    zone_details, status_code, message = get_zone_details(zone_no)
-    if status_code != 200:
-        logger.debug(message)
-        return buildResponse(status_code, message)
-
-    fare_details, status_code, message = get_fare_details(zone_details.get("fare_id"))
-    if status_code != 200:
-        logger.debug(message)
-        return buildResponse(status_code, message)
-
-    fare_capping, status_code, message = get_capping_details(zone_details.get("fare_id"))
-    if status_code != 200:
-        logger.debug(message)
-        return buildResponse(status_code, message)
-
-    # check if tagoff
-    logger.debug("Checking if the journey is a tag off journey")
-    tag_off, status_code, message = is_tag_off(card_id, zone_details.get("mode_id"), datetime.now())
-    if status_code != 200:
-        logger.debug(message)
-        return buildResponse(status_code, message)
-
-    # check if within time limit
-    expiration_time = None
-    logger.debug("Checking if the journey exists in the time window")
-    within_time_limit, expiration_details, status_code, message = is_within_time_limit(card_id, datetime.now())
-    if status_code != 200:
-        logger.debug(message)
-        return buildResponse(status_code, message)
-    else:
-        if expiration_details is not None:
-            expiration_time = expiration_details.get("expiration_time")
-
-    if fare_capping is None:
-        fare_cap = False
-    else:
-        fare_cap, status_code, message = can_cap(card_id, zone_no, int(fare_capping.get("time_period")),
-                                                 Decimal(fare_capping.get("max_amount")), datetime.now())
+    try:
+        zone_details, status_code, message = get_zone_details(zone_no)
         if status_code != 200:
             logger.debug(message)
             return buildResponse(status_code, message)
 
-    #       calculate amount based on conditions like tag off, is within time limit
-    if tag_off or within_time_limit or fare_cap:
-        final_fare = 0.00
+        fare_details, status_code, message = get_fare_details(zone_details.get("fare_id"))
+        if status_code != 200:
+            logger.debug(message)
+            return buildResponse(status_code, message)
+
+        fare_capping, status_code, message = get_capping_details(zone_details.get("fare_id"))
+        if status_code != 200:
+            logger.debug(message)
+            return buildResponse(status_code, message)
+
+        # check if tagoff
+        logger.debug("Checking if the journey is a tag off journey")
+        tag_off, status_code, message = is_tag_off(card_id, zone_details.get("mode_id"), datetime.now())
+        if status_code != 200:
+            logger.debug(message)
+            return buildResponse(status_code, message)
+
+        # check if within time limit
+        expiration_time = None
+        logger.debug("Checking if the journey exists in the time window")
+        within_time_limit, expiration_details, status_code, message = is_within_time_limit(card_id, datetime.now())
+        if status_code != 200:
+            logger.debug(message)
+            return buildResponse(status_code, message)
+        else:
+            if expiration_details is not None:
+                expiration_time = expiration_details.get("expiration_time")
+
+        if fare_capping is None:
+            fare_cap = False
+        else:
+            fare_cap, status_code, message = can_cap(card_id, zone_no, int(fare_capping.get("time_period")),
+                                                     Decimal(fare_capping.get("max_amount")), datetime.now())
+            if status_code != 200:
+                logger.debug(message)
+                return buildResponse(status_code, message)
+
+        #       calculate amount based on conditions like tag off, is within time limit
+        if tag_off or within_time_limit or fare_cap:
+            final_fare = 0.00
+        else:
+            final_fare = fare_details.get("amount")
+
+        response = {
+            "amount": final_fare,
+            "expiration_time": str(expiration_time),
+            "tagoff": tag_off,
+            "fare_cap": fare_cap,
+            "mode_id": zone_details.get('mode_id'),
+            "mode_of_transport": fare_details.get('mode_of_transport')
+        }
+
+        response_pickled = jsonpickle.encode(response)
+        logger.debug("Fare details being returned to caller")
+        return Response(response_pickled, status=200, mimetype="application/json")
+    except Exception as error:
+        logger.error(f"Error: Calculting fare {error}")
+        return buildResponse(500, "Error occured while calculting fare")
+
+
+@app.route('/api/card/fare/deduct', methods=['POST'])
+def deduction():
+    request_data = request.get_json()
+    if request_data and 'card_id' in request_data and 'zone_no' in request_data and 'mode_id' in request_data and 'amount' in request_data and 'timestamp' in request_data and 'expiration_time' in request_data and 'mode_of_transport' in request_data:
+        card_id = request_data.get("card_id")
+        zone_no = request_data.get("zone_no")
+        mode_id = request_data.get("mode_id")
+        amount = request_data.get("amount")
+        tag_on = request_data.get("tag_on")
+        tagged_on_timestamp = request_data.get("timestamp")
+        expiration_time = request_data.get("expiration_time")
+        mode_of_transport = request_data.get("mode_of_transport")
+        end_time = tagged_on_timestamp
+        tagging_status = 'OFF'
+        if tag_on:
+            end_time = ""
+            tagging_status = 'ON'
+
+        if expiration_time is None:
+            expiration_time = f"{tagged_on_timestamp}+INTERVAL '90 minutes'"
+        try:
+            with db_pool.get_db_cursor() as cur:
+                insert_script = 'INSERT INTO fare.Fare_Deduction (card_id, zone_no, mode_id, amount, tagged_on_timestamp, expiration_time) VALUES (%s, %s, %s, %s,%s,%s) RETURNING deduction_id'
+                insert_values = (f'{card_id}', zone_no, mode_id, amount, f'{tagged_on_timestamp}', f'{expiration_time}')
+                cur.execute(insert_script, insert_values)
+                record = cur.fetchone()
+            if not record:
+                raise Exception("Failed to inserted failed with no row id")
+
+            # last inserted id
+            deducted_id = record[0]
+
+            timestamp = datetime.now()
+            timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            journey_id = str(uuid.uuid4())
+            journey_details = {
+                "type": 'J',
+                "journey_id": journey_id,
+                "card_id": card_id,
+                "mode_of_transport": mode_of_transport,
+                "start_time": tagged_on_timestamp,
+                "end_time": end_time,
+                "fare_deducted": amount,
+                "tagging_status": tagging_status,
+                "created_at": timestamp,
+                "updated_at": timestamp
+            }
+            journey_details_json = json.dumps(journey_details)
+            # Add values to the message queue
+            message_queue.lpush(LOG_KEY, f"Pushed journey data to queue {journey_id}")
+            message_queue.lpush(JOURNEY_KEY, journey_details_json)
+            return Response(jsonpickle.encode({'deducted_id': deducted_id}), status=200, mimetype="application/json")
+        except Exception as error:
+            logger.error(f"Error: Deducting fare {error}")
+            return buildResponse(500, "Server error")
     else:
-        final_fare = fare_details.get("amount")
+        return buildResponse(400, "Insufficient or incorrect data to post data to fare deductions table")
 
-    response = {
-        "amount": final_fare,
-        "expiration_time": expiration_time,
-        "tagoff": tag_off,
-        "fare_cap": fare_cap
-    }
 
-    response_pickled = jsonpickle.encode(response)
-    logger.debug("Fare details being returned to caller")
-    return Response(response_pickled, status=200, mimetype="application/json")
+@app.route('/api/card/fare/deduct', methods=['DELETE'])
+def deductionDelete():
+    request_data = request.args
+    if request_data and 'deducted_id':
+        deducted_id = request_data.get('deducted_id')
+        try:
+            with db_pool.get_db_cursor() as cur:
+                cur.execute("DELETE FROM fare.Fare_Deduction WHERE deduction_id = %s", (deducted_id,))
+
+            logs.info(f'Deduction reverted for {deducted_id}')
+            return buildResponse(200, "Successful")
+        except Exception as error:
+            logger.error(f"Error: Reverting deduction fare {error}")
+
+    return buildResponse(500, "Server error")
 
 
 # get zone details
-# @app.route('/api/card/fare/zones/<int:zone_no>',methods=['GET'])
 def get_zone_details(zone_no):
     logger.debug("Entering method for getting zone details")
     try:
@@ -165,20 +236,20 @@ def get_zone_details(zone_no):
 
 
 # get fare details
-# @app.route('/api/card/fare/fares/<int:fare_id>',methods=['GET'])
 def get_fare_details(fare_id):
     try:
         fare_details = getCached_value(fare_id)
         if not fare_details:
             with db_pool.get_db_cursor() as cur:
-                cur.execute("SELECT amount from fare.fare_detail where fare_id= %s", (fare_id,))
+                cur.execute("SELECT amount, mode_of_transport from fare.fare_detail where fare_id= %s", (fare_id,))
                 record = cur.fetchone()
             if not record:
                 return None, 404, "Fare Details Not Found"
             else:
                 amount = Decimal(record[0])
                 fare_details = {
-                    "amount": str(amount)
+                    "amount": str(amount),
+                    "mode_of_transport": str(record[1])
                 }
                 setCached_value(fare_id, fare_details)
         return fare_details, 200, None
@@ -187,7 +258,7 @@ def get_fare_details(fare_id):
         return None, 500, "Error Connecting to database"
 
 
-# @app.route('/api/card/fare/fare_capping/<int:fare_capping_id>',methods=['GET'])
+# get fare capping details
 def get_capping_details(fare_id):
     try:
         fare_capping_details = getCached_value(str(f"Cap-{fare_id}"))
@@ -206,6 +277,7 @@ def get_capping_details(fare_id):
                         "max_amount": str(maxamount),
                     }
                 setCached_value(str(f"Cap-{fare_id}"), fare_capping_details)
+                return fare_capping_details, 200, None
         else:
             return fare_capping_details, 200, None
     except Exception as error:
@@ -213,6 +285,7 @@ def get_capping_details(fare_id):
         return None, 500, "Error Connecting to database"
 
 
+# get is capped fare
 def can_cap(card_id, zone_no, timeperiod, max_amount, timestamp):
     try:
         current_date = datetime.now()
@@ -239,6 +312,7 @@ def can_cap(card_id, zone_no, timeperiod, max_amount, timestamp):
         return None, 500, "Error connecting to db"
 
 
+# check the 90 minute window
 def is_within_time_limit(card_id, time_stamp):
     try:
         with db_pool.get_db_cursor() as cur:
@@ -262,6 +336,7 @@ def is_within_time_limit(card_id, time_stamp):
         return None, None, 500, "Error trying to connect to db"
 
 
+# determine is tag on/off
 def is_tag_off(card_id, mode_id, timestamp):
     try:
         with db_pool.get_db_cursor() as cur:
@@ -287,63 +362,6 @@ def is_tag_off(card_id, mode_id, timestamp):
         return None, 500, "Error trying to connect to db"
 
 
-@app.route('/api/card/fare/deduct', methods=['POST'])
-def deduction():
-    request_data = request.get_json()
-    if request_data and 'card_id' in request_data and 'zone_no' in request_data and 'mode_id' in request_data and 'amount' in request_data and 'timestamp' in request_data and 'expiration_time' in request_data and 'mode_of_transport' in request_data:
-        card_id = request_data.get("card_id")
-        zone_no = request_data.get("zone_no")
-        mode_id = request_data.get("mode_id")
-        amount = request_data.get("amount")
-        tag_on = request_data.get("tag_on")
-        tagged_on_timestamp = request_data.get("timestamp")
-        expiration_time = request_data.get("expiration_time")
-        mode_of_transport = request_data.get("mode_of_transport")
-        end_time = tagged_on_timestamp
-        tagging_status = 'OFF'
-        if tag_on:
-            end_time = ""
-            tagging_status = 'ON'
-
-        if expiration_time is None:
-            expiration_time = f"{tagged_on_timestamp}+INTERVAL '90 minutes'"
-        try:
-            with db_pool.get_db_cursor() as cur:
-                insert_script = 'INSERT INTO fare.Fare_Deduction (card_id, zone_no, mode_id, amount, tagged_on_timestamp, expiration_time) VALUES (%s, %s, %s, %s,%s,%s)'
-                insert_values = (f'{card_id}', zone_no, mode_id, amount, f'{tagged_on_timestamp}', f'{expiration_time}')
-                cur.execute(insert_script, insert_values)
-            timestamp = datetime.now()
-            timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-            journey_id = str(uuid.uuid4())
-            journey_details = {
-                    "type":'J',
-                    "journey_id": journey_id,
-                    "card_id": card_id,
-                    "mode_of_transport": mode_of_transport,
-                    "start_time": tagged_on_timestamp,
-                    "end_time": end_time,
-                    "fare_deducted": amount,
-                    "tagging_status": tagging_status,
-                    "created_at": timestamp,
-                    "updated_at": timestamp
-            }
-            journey_details_json = json.dumps(journey_details)
-                # Add values to the message queue
-            # message_queue.lpush(LOG_KEY)
-            message_queue.lpush(LOG_KEY, f"Pushed journey data to queue {journey_id}")
-            message_queue.lpush(JOURNEY_KEY, journey_details_json)
-            return buildResponse(200, "Successful")
-                # Add values to the message queue
-                # message_queue.lpush(LOG_KEY)
-        except Exception as error:
-            logger.debug("Error occured while inserting data")
-            logger.debug(error)
-            return buildResponse(500, "Server error")
-    else:
-        print(request_data)
-        return buildResponse(400, "Insufficient or incorrect data to post data to fare deductions table")
-
-
 def setCached_value(key, value):
     try:
         redis_cache.hset(f"{key}", mapping=value)
@@ -363,9 +381,19 @@ def getCached_value(key):
     except ConnectionError as e:
         return e.args[0]
 
+
 @app.teardown_appcontext
 def teardown_db(exception=None):
     logger.info("App request tear down")
+
+
+# Response builder
+def buildResponse(status_code, message):
+    response = {"success": status_code == 200,
+                "message": message}
+    response_pickled = jsonpickle.encode(response)
+    return Response(response=response_pickled, status=status_code, mimetype="application/json")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=6100, debug=True)

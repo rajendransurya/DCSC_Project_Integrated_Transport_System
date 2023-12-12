@@ -9,10 +9,9 @@ COPY payments/ .
 # Copy the db package directory into the container
 COPY db/ ./db
 
-COPY .env /app
 
 # Install dependencies for rfid_service
-RUN pip install flask requests jsonpickle psycopg2-binary python-dotenv
+RUN pip install flask requests jsonpickle psycopg2-binary python-dotenv psycopg-pool redis datetime psycopg_pool psycopg-binary psycopg
 
 # Expose the port where the rfid_service Flask app runs (Port 6000)
 EXPOSE 6200

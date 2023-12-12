@@ -1,0 +1,14 @@
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: rfid-card
+  labels:
+    app: rfid-card
+spec:
+  selector:
+    app: rfid-card
+  ports:
+    - protocol: "TCP"
+      port: 6300
+      targetPort: 6300

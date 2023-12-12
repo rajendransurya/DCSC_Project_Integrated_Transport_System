@@ -1,0 +1,28 @@
+apiVersion: apps/v1 #  for k8s versions before 1.9.0 use apps/v1beta2  and before 1.8.0 use extensions/v1beta1
+kind: Deployment
+metadata:
+  name: audit
+spec:
+  selector:
+    matchLabels:
+      app: audit
+  replicas: 3 #change is as per requirement
+  template:
+    metadata:
+      labels:
+        app: audit
+    spec:
+      containers:
+        - name: audit
+          image: rajendransurya/audit:latest
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: AWS_ACCESS_KEY_ID
+              value: 'AKIAZ5NHHW43FE5AWOXD'
+            - name: AWS_SECRET_ACCESS_KEY
+              value: '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'
+            - name: AWS_REGION
+              value: 'us-east-1'
