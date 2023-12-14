@@ -99,7 +99,7 @@ def fare_deduction():
             return buildResponse(status_code, message)
         else:
             if expiration_details is not None:
-                expiration_time = expiration_details.get("expiration_time")
+                expiration_time = datetime.astimezone(expiration_details.get("expiration_time"))
 
         if fare_capping is None:
             fare_cap = False
@@ -146,10 +146,10 @@ def deduction():
         expiration_time = request_data.get("expiration_time")
         mode_of_transport = request_data.get("mode_of_transport")
         end_time = tagged_on_timestamp
-        tagging_status = 'OFF'
+        tagging_status = 'ON'
         if tag_on:
             end_time = ""
-            tagging_status = 'ON'
+            tagging_status = 'OFF'
 
         if expiration_time is None:
             expiration_time = f"{tagged_on_timestamp}+INTERVAL '90 minutes'"
@@ -321,8 +321,9 @@ def is_within_time_limit(card_id, time_stamp):
             record = cur.fetchone()
         if not record:
             # check if within limit
+            print(f'We got no record for expiration time')
             result = {
-                "expiration_time": str(datetime.now() + timedelta(minutes=90))
+                "expiration_time": datetime.now() + timedelta(minutes=90)
             }
             return False, result, 200, None
         else:
@@ -353,7 +354,7 @@ def is_tag_off(card_id, mode_id, timestamp):
                 return False, 200, None
 
             # check if within limit
-            if not faremode_record[0] and record[1] != 0.00:
+            if not faremode_record[0]:
                 return True, 200, None
             else:
                 return False, 200, None

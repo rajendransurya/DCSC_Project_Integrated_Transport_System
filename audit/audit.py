@@ -65,8 +65,8 @@ def create_audit_records():
                 "transaction_id" : {'S':record_details.get("transaction_id")},
                 "card_id" : {'S': str(record_details.get("card_id"))},
                 "amount":{'N': str(record_details.get("amount"))},
-                "payment_method":{'S',str(record_details.get("payment_method"))},
-                "payment_status":{'S',str(record_details.get("payment_status"))},
+                "payment_method":{'S':str(record_details.get("payment_method"))},
+                "payment_status":{'S':str(record_details.get("payment_status"))},
                 "created_at": {'S': record_details.get("created_at")},
                 "updated_at": {'S': record_details.get("updated_at")}
             }

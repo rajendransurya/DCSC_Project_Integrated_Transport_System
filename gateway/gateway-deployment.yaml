@@ -23,7 +23,7 @@ spec:
         - name: rfid_card_endpoint
           value: "http://rfid-card:6300"
         - name: fare_deduction_endpoint
-          value: "http://fare_deduct:6100"
+          value: "http://fare-deduction:6100"
         - name: payment_end_point
           value: "http://payment:6200"
           #payment and other service to follow

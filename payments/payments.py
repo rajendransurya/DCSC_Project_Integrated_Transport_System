@@ -42,15 +42,15 @@ def payment():
   email = request_data.get("email")
   name = request_data.get("name")
 
-  payment_id = str(uuid.uuid4())
   try:
    with db_pool.get_db_cursor() as cur:
     payment_status = 'Success'
     if payment_method == 'gpay':
      payment_status = 'Failure'
-    insert_script = 'INSERT INTO pmt.payments (payment_id, card_id, amount, payment_method, payment_status) VALUES (%s, %s, %s, %s,%s)'
-    insert_values = (f'{payment_id}',f'{card_id}', amount, payment_method, payment_status)
+    insert_script = 'INSERT INTO pmt.payment (card_id, amount, payment_method, payment_status) VALUES (%s, %s, %s, %s)  RETURNING payment_id'
+    insert_values = (f'{card_id}', amount, payment_method, payment_status)
     cur.execute(insert_script, insert_values)
+    payment_id = cur.fetchone()
     timeout_seconds=5
     time.sleep(timeout_seconds)
 
@@ -58,8 +58,8 @@ def payment():
     timestamp = timestamp.strftime('%Y-%m-%d %H:%M:%S')
 
     transaction_details = {
-     "type": 'J',
-     "transaction_id": payment_id,
+     "type": 'T',
+     "transaction_id": str(uuid.uuid4()),
      "card_id": card_id,
      "amount": amount,
      "payment_method": payment_method,

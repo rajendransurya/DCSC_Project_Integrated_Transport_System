@@ -1,4 +1,6 @@
 import sys
+from decimal import Decimal
+
 from flask import Flask, request, Response
 import jsonpickle
 import logging
@@ -66,7 +68,8 @@ def deduction():
 
     if request_data and 'card_id' in request_data and 'amount' in request_data:
         card_id = request_data["card_id"]
-        amount = request_data["amount"]
+        amount = float(request_data["amount"])
+        print(f'card_id {card_id} --- amount {amount}')
 
         try:
 

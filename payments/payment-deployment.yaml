@@ -6,7 +6,7 @@ spec:
   selector:
     matchLabels:
       app: payment
-  replicas: 3 #change is as per requirement
+  replicas: 1 #change is as per requirement
   template:
     metadata:
       labels:
