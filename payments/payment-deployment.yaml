@@ -19,7 +19,7 @@ spec:
             - containerPort: 6200
           env:
             - name: PG_HOSTNAME
-              value: "34.170.205.253"
+              value: 
             - name: PG_DBNAME
               value: "integrated_transport_system"
             - name: PG_USERNAME
