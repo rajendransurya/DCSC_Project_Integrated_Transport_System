@@ -21,4 +21,4 @@ spec:
             - name: REDIS_PORT
               value: "6379"
             - name: SENDGRID_API_KEY
-              value: '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'
+              value: 
