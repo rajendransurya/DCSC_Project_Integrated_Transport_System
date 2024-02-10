@@ -1,5 +1,4 @@
 Final-project-integrated-transportation-system
-Team Members - Surya Rajendran, Dharini Baskaran
 
 Integrated Public Transport System
 Overview
